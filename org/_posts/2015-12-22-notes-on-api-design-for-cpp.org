@@ -9,7 +9,7 @@ tags:
   - Programming
   - Design
 published: true
-permalink: /:title
+permalink: /:title/
 ---
 #+END_HTML
 

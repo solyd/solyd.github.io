@@ -1,0 +1,257 @@
+#+OPTIONS: toc:nil
+#+BEGIN_HTML
+---
+layout: post
+title: Notes on 'API Design for C++'
+tags:
+  - Software Engineering
+  - C++
+  - Programming
+  - Design
+published: true
+permalink: /:title
+---
+#+END_HTML
+
+These are the notes I took while going over [[http://www.apibook.com/blog/][API Design for C++ by
+Martin Reddy]].  The book presents a mixture of good coding practices,
+tips on API design, and technical pitfalls to avoid when working with
+C++.
+
+The book also contain many references to popular articles, papers and
+books on C++.
+
+These notes don't reflect in any way the entire content of the book,
+they are just a collection of points I personally found
+interesting/important. Furthermore, I'm sure I've made mistakes or
+misinterpreted the book at times. Please let me know if you find any
+mistakes.
+
+- *Fragile base class problem (Blanchette, 2008)*
+  - Making methods of interface class virtual allows client code to
+    override them, possibly making future changes impossible or have
+    unpredictable behviour because it is not longer your code that is
+    running but instead the clients code.
+
+  - Allowing client code to interject logic is largely a bad idea. it
+    can do dangerous or dumb stuff like ~delete this~.
+
+  - Virtual method might want to call other internal methods to update
+    the state of the object (e.g. for debugging purposes or
+    w\e). Client code might neglect to do so, even if it is
+    documented. You're breaking the "Hard to misuse" rule.
+- Adding, removing, re-ordering virtual methods breaks binary
+  compatability.
+- Overloading is tricky with virtual functions - due to symbol hiding
+  (Ways around it: Dewhurst, 2002)
+- Prefer making virtual functions private, then protected and only
+  then public (Sutter, 2001).
+- *Template Method design patter / NVI (Non Virtual Interface)*: the
+  basic logic is present in base class and uses virtual methods that
+  can be overridden in order to customize details of implementing
+  various steps.
+- Instead of using booleans use enums with descriptive names.
+  #+BEGIN_SRC cpp
+    enum EmptyStatus {
+      Empty,
+      NotEmpty
+    };
+
+    void foo(bool isEmpty); // bad
+    void foo(EmptyStatus isEmpty); // good
+  #+END_SRC
+- Prefer orthogonal (no side effects) API design.
+- *Duplicating data in order to reduce coupling*: If ~Chat~ uses
+  ~ChatUser~ object only for ~ChatUser::GetName()~ then pass the name
+  of the user to ~Chat~ object instead of the whole ~ChatUser~ object.
+
+  This requires certain assumptions, such as that the ~ChatUser~ object
+  never changes its name (or maybe you have some trick to update the
+  ~Chat~ object with a new name on a change).
+- *PIMPL*
+  - When using PIMPL you must define copy semantics. Either forbid
+    or define copy ctor/assignment op.
+  - Fast PIMPL (Sutter, 1999), uses custom allocator
+  - HUGE downside of PIMPL - compiler cannot check for constness of
+    methods! it only checks you didn't change the pointer to the
+    implementation object, not that the method invoked on that object
+    is const!
+- *Singleton is seriously a bad idea*
+  - Relative order of intialization of non local static objects in
+    different translation units is undefined. As a possible solution,
+    declare the instance inside a static method/function GetInstance().
+    #+BEGIN_SRC cpp
+      A* GetInstance() {
+        static A* aInstance;
+        // ...
+      }
+    #+END_SRC
+
+  - Initialization is not thread safe. So you'll need to use a mutex.
+    #+BEGIN_SRC cpp
+      A* GetInstance() {
+        static A* aInstance;
+        static mutex_type instanceLock;
+
+        scope_lock_type lock(&instanceLock);
+        if (aInstance) {
+          return aInstance;
+        }
+        else {
+          // create aInstance and return
+        }
+      }
+    #+END_SRC
+    - You think you can optimize with double checking. You
+      cannot. see: /Meyers and Alexanderscu 2004/. Client code should
+      be aware and instead save the instance instead of constantly
+      calling ~GetInstance()~.
+
+  - If singleton calls another singleton in its dtor, that singleton
+    instance may have been destructed already!
+
+  - Use dependency injection instead of singletons: pass the object
+    required in the ctor instead of calling GetInstace().
+
+- *Drawbacks of constructors and why to use a Factory*
+  - No return value.
+  - Can't have multiple ctors that get the same params.
+  - Static binding (explicitly calling ~new Foo()~).
+  - No virtual ctorr.
+
+- *Wrapping an API* (ref /Feathers, 2004/)
+  - Reasons why you would want to wrap an API:
+    1. It's ugly/messy/hard to use.
+    2. You want to expose plain C API.
+    3. To hide 3rd party library dependencies from client code.
+  - Wrapping techniques:
+    1. *Proxy*
+       - useful to modify original API functionality, especially if
+         source code for it is not available.
+       - Straightforward wrapper.
+       - Implements same interface as wrapped API.
+       - Can lazily instantiate underlying API objects.
+       - Possible to add access control.
+       - Debugging support.
+       - Make underlying API thread safe.
+       - Resource pools of underlying API to load balance among them.
+
+    2. *Adapter*
+       - Exposes a different API than the underlying one.
+       - Enables your code to be consistent. You don't have to use
+         other library's abstractions or problem domain specific
+         terms.
+
+    3. *Facade*
+       - Expose multiple layers of API:l ower levels are available if
+         flexibility is required, but a higher level is also there to
+         make programming against the API simpler.
+
+         A good example from my experience is the ~rabbitmq-c~ library
+         for working with RabbitMQ messaging broker. It exposes "high
+         level" API calls that deal with messages and consumers but at
+         the same time allows to handle low level details like
+         send/recieving "frames" of messages manually.
+- *Open/Closed Principle*: open for extention, closed for modification
+  (Meyer, 1997).
+- *The Law of Demeter / Principle of Least Knowledge*
+  #+BEGIN_SRC cpp
+    x->GetIntBucket()->Add(2); // bad
+    x->AddInt(2); // good
+  #+END_SRC
+  - This way, you may have many thin wrappers that do nothing but
+    forward the calls, but you gain more loosly coupled components.
+- Collection of opposing keywords for naming things
+  #+BEGIN_SRC text
+  Add/Remove     Begin/End     Create/Destroy
+  Enable/Disable Insert/Delete Lock/Unlock
+  Next/Previous  Open/Close    Push/Pop
+  Send/Receive   Show/Hide     Source/Target
+  #+END_SRC
+- throw(...) declarations are checked at runtime and may prevent optimizations.
+- *Template Styles*
+  - /Explicit instances/: write implementation in .cpp file and at the
+    end add all the types allowed by client code to use.
+  - /Seperation Model/: Relies on using the 'export' keyword, allows
+    to write the implementation in .cpp file instead of .h. Most
+    compilers don't support this feature (gcc 4.3 does not).
+  - /Inclusion Model/:
+
+    ~foo.h~:
+    #+BEGIN_SRC cpp
+      #ifndef FOO_H
+      #define FOO_H
+
+      template <class T>
+      class Foo {
+        // ...
+      };
+
+      #include "foo_impl.h"
+      #endif
+    #+END_SRC
+
+    ~foo_impl.h~:
+    #+BEGIN_SRC cpp
+      #ifndef FOO_H
+      #error 'foo_impl.h' cannot be directly included. Include 'foo.h' instead.
+      #endif
+
+      // implementation of Foo class template methods
+    #+END_SRC
+- Favor free functions for operator overloading when possible (some
+  operators cannot be free functions).
+  - you gain implicit conversions (??)
+  - reduces coupling, same as before: prefer free functions always
+  - If the operator needs access to private members, define it as
+    class method. Otherwise you are forces to declare the operator
+    function as a friend and client cannot add friends, and so won't
+    be able to define new operators.
+- Avoid using ~#define~ for constants (Cline et al, 1998; DeLoura
+  2001; Meyers 2005). Use static const member instead.
+  - no types
+  - no scoping
+  - no access control
+  - no symbols: preprocessor will strip the name of the constant,
+    making debugging the code from client side harder because they
+    don't have a meaningful name but just a number instead.
+- *Linkage*
+  - /External linkage/: accessible from other translation units (.cpp
+    files).
+  - /Exported visibility/: visibile from library file (e.g. DLL).
+  - By default, GCC exports all sybmols. Turning this off improves
+    load times of the library.
+- ~#include~ guards may improve performance.
+  foo.h:
+  #+BEGIN_SRC cpp
+    #ifndef FOO_H
+    #define FOO_H
+    // ...
+    #endif
+  #+END_SRC
+
+  Then, in order to include foo.h you write:
+  #+BEGIN_SRC cpp
+    #ifndef FOO_H
+    #include "foo.h"
+    #endif
+
+    // ...
+  #+END_SRC
+
+  This dramatically improves compilation times on some compilers /
+  environments. You may see no improvement, since various factors such
+  as the file system come into play here. For example, a certain file
+  system may have better caching which will make the cost of including
+  a file close to zero.
+- Don't declare constants in headers. Use ~extern~ and define the
+  value in .cpp file. This will prevent each place that ~#include~'s
+  the header from reserving space for its own seperate copy for the
+  constant, thus preventing bloat in the compiled target.
+- *Versioning*: <major>.<minor>.<patch>
+  - /major/: API breaking changes.
+  - /minor/: Additions made to API, but does not break existing
+    exposed API.
+  - /patch/: No changes to API, only fixes/improvements. Client code
+    needs not to change.
+- Derive from a class only if it provides a virtual dtor.

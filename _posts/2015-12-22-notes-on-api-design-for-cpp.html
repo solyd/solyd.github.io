@@ -1,0 +1,417 @@
+---
+layout: post
+title: Notes on 'API Design for C++'
+tags:
+  - Software Engineering
+  - C++
+  - Programming
+  - Design
+published: true
+permalink: /:title
+---
+
+<p>
+These are the notes I took while going over <a href="http://www.apibook.com/blog/">API Design for C++ by Martin Reddy</a>.  The book presents a mixture of good coding practices,
+tips on API design, and technical pitfalls to avoid when working with
+C++.
+</p>
+<p>
+The book also contain many references to popular articles, papers and
+books on C++.
+</p>
+<p>
+These notes don't reflect in any way the entire content of the book,
+they are just a collection of points I personally found
+interesting/important. Furthermore, I'm sure I've made mistakes or
+misinterpreted the book at times. Please let me know if you find any
+mistakes.
+</p>
+<ul>
+<li><b>Fragile base class problem (Blanchette, 2008)</b>
+<ul>
+<li>Making methods of interface class virtual allows client code to
+    override them, possibly making future changes impossible or have
+    unpredictable behviour because it is not longer your code that is
+    running but instead the clients code.
+
+</li>
+<li>Allowing client code to interject logic is largely a bad idea. it
+    can do dangerous or dumb stuff like <code>delete this</code>.
+
+</li>
+<li>Virtual method might want to call other internal methods to update
+    the state of the object (e.g. for debugging purposes or
+    w\e). Client code might neglect to do so, even if it is
+    documented. You're breaking the "Hard to misuse" rule.
+</li>
+</ul>
+
+</li>
+<li>Adding, removing, re-ordering virtual methods breaks binary
+  compatability.
+</li>
+<li>Overloading is tricky with virtual functions - due to symbol hiding
+  (Ways around it: Dewhurst, 2002)
+</li>
+<li>Prefer making virtual functions private, then protected and only
+  then public (Sutter, 2001).
+</li>
+<li><b>Template Method design patter / NVI (Non Virtual Interface)</b>: the
+  basic logic is present in base class and uses virtual methods that
+  can be overridden in order to customize details of implementing
+  various steps.
+</li>
+<li>Instead of using booleans use enums with descriptive names.
+
+
+
+<pre class="src src-cpp"><span style="color: #a1db00;">enum</span> <span style="color: #00d7af;">EmptyStatus</span> {
+  <span style="color: #ff8700;">Empty</span>,
+  <span style="color: #ff8700;">NotEmpty</span>
+};
+
+<span style="color: #00d7af;">void</span> <span style="color: #ffd700;">foo</span>(<span style="color: #00d7af;">bool</span> <span style="color: #ff8700;">isEmpty</span>); <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">bad</span>
+<span style="color: #00d7af;">void</span> <span style="color: #ffd700;">foo</span>(<span style="color: #00d7af;">EmptyStatus</span> <span style="color: #ff8700;">isEmpty</span>); <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">good</span>
+</pre>
+
+</li>
+<li>Prefer orthogonal (no side effects) API design.
+</li>
+<li><b>Duplicating data in order to reduce coupling</b>: If <code>Chat</code> uses
+  <code>ChatUser</code> object only for <code>ChatUser::GetName()</code> then pass the name
+  of the user to <code>Chat</code> object instead of the whole <code>ChatUser</code> object.
+
+<p>
+  This requires certain assumptions, such as that the <code>ChatUser</code> object
+  never changes its name (or maybe you have some trick to update the
+  <code>Chat</code> object with a new name on a change).
+</p></li>
+<li><b>PIMPL</b>
+<ul>
+<li>When using PIMPL you must define copy semantics. Either forbid
+    or define copy ctor/assignment op.
+</li>
+<li>Fast PIMPL (Sutter, 1999), uses custom allocator
+</li>
+<li>HUGE downside of PIMPL - compiler cannot check for constness of
+    methods! it only checks you didn't change the pointer to the
+    implementation object, not that the method invoked on that object
+    is const!
+</li>
+</ul>
+
+</li>
+<li><b>Singleton is seriously a bad idea</b>
+<ul>
+<li>Relative order of intialization of non local static objects in
+    different translation units is undefined. As a possible solution,
+    declare the instance inside a static method/function GetInstance().
+
+
+
+<pre class="src src-cpp"><span style="color: #00d7af;">A</span>* <span style="color: #ffd700;">GetInstance</span>() {
+  <span style="color: #a1db00;">static</span> <span style="color: #00d7af;">A</span>* <span style="color: #ff8700;">aInstance</span>;
+  <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">...</span>
+}
+</pre>
+
+
+</li>
+<li>Initialization is not thread safe. So you'll need to use a mutex.
+
+
+
+<pre class="src src-cpp"><span style="color: #00d7af;">A</span>* <span style="color: #ffd700;">GetInstance</span>() {
+  <span style="color: #a1db00;">static</span> <span style="color: #00d7af;">A</span>* <span style="color: #ff8700;">aInstance</span>;
+  <span style="color: #a1db00;">static</span> <span style="color: #00d7af;">mutex_type</span> <span style="color: #ff8700;">instanceLock</span>;
+
+  scope_lock_type <span style="color: #00d7af;">lock</span>(&amp;<span style="color: #ff8700;">instanceLock</span>);
+  <span style="color: #a1db00;">if</span> (aInstance) {
+    <span style="color: #a1db00;">return</span> aInstance;
+  }
+  <span style="color: #a1db00;">else</span> {
+    <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">create aInstance and return</span>
+  }
+}
+</pre>
+
+<ul>
+<li>You think you can optimize with double checking. You
+      cannot. see: <i>Meyers and Alexanderscu 2004</i>. Client code should
+      be aware and instead save the instance instead of constantly
+      calling <code>GetInstance()</code>.
+
+</li>
+</ul>
+
+</li>
+<li>If singleton calls another singleton in its dtor, that singleton
+    instance may have been destructed already!
+
+</li>
+<li>Use dependency injection instead of singletons: pass the object
+    required in the ctor instead of calling GetInstace().
+
+</li>
+</ul>
+
+</li>
+<li><b>Drawbacks of constructors and why to use a Factory</b>
+<ul>
+<li>No return value.
+</li>
+<li>Can't have multiple ctors that get the same params.
+</li>
+<li>Static binding (explicitly calling <code>new Foo()</code>).
+</li>
+<li>No virtual ctorr.
+
+</li>
+</ul>
+
+</li>
+<li><b>Wrapping an API</b> (ref <i>Feathers, 2004</i>)
+<ul>
+<li>Reasons why you would want to wrap an API:
+<ol>
+<li>It's ugly/messy/hard to use.
+</li>
+<li>You want to expose plain C API.
+</li>
+<li>To hide 3rd party library dependencies from client code.
+</li>
+</ol>
+
+</li>
+<li>Wrapping techniques:
+<ol>
+<li><b>Proxy</b>
+<ul>
+<li>useful to modify original API functionality, especially if
+         source code for it is not available.
+</li>
+<li>Straightforward wrapper.
+</li>
+<li>Implements same interface as wrapped API.
+</li>
+<li>Can lazily instantiate underlying API objects.
+</li>
+<li>Possible to add access control.
+</li>
+<li>Debugging support.
+</li>
+<li>Make underlying API thread safe.
+</li>
+<li>Resource pools of underlying API to load balance among them.
+
+</li>
+</ul>
+
+</li>
+<li><b>Adapter</b>
+<ul>
+<li>Exposes a different API than the underlying one.
+</li>
+<li>Enables your code to be consistent. You don't have to use
+         other library's abstractions or problem domain specific
+         terms.
+
+</li>
+</ul>
+
+</li>
+<li><b>Facade</b>
+<ul>
+<li>Expose multiple layers of API:l ower levels are available if
+         flexibility is required, but a higher level is also there to
+         make programming against the API simpler.
+
+<p>
+         A good example from my experience is the <code>rabbitmq-c</code> library
+         for working with RabbitMQ messaging broker. It exposes "high
+         level" API calls that deal with messages and consumers but at
+         the same time allows to handle low level details like
+         send/recieving "frames" of messages manually.
+</p></li>
+</ul>
+
+</li>
+</ol>
+
+</li>
+</ul>
+
+</li>
+<li><b>Open/Closed Principle</b>: open for extention, closed for modification
+  (Meyer, 1997).
+</li>
+<li><b>The Law of Demeter / Principle of Least Knowledge</b>
+
+
+
+<pre class="src src-cpp">x-&gt;GetIntBucket()-&gt;Add(2); <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">bad</span>
+x-&gt;AddInt(2); <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">good</span>
+</pre>
+
+<ul>
+<li>This way, you may have many thin wrappers that do nothing but
+    forward the calls, but you gain more loosly coupled components.
+</li>
+</ul>
+
+</li>
+<li>Collection of opposing keywords for naming things
+
+
+
+<pre class="src src-text">Add/Remove     Begin/End     Create/Destroy
+Enable/Disable Insert/Delete Lock/Unlock
+Next/Previous  Open/Close    Push/Pop
+Send/Receive   Show/Hide     Source/Target
+</pre>
+
+</li>
+<li>throw(&hellip;) declarations are checked at runtime and may prevent optimizations.
+</li>
+<li><b>Template Styles</b>
+<ul>
+<li><i>Explicit instances</i>: write implementation in .cpp file and at the
+    end add all the types allowed by client code to use.
+</li>
+<li><i>Seperation Model</i>: Relies on using the 'export' keyword, allows
+    to write the implementation in .cpp file instead of .h. Most
+    compilers don't support this feature (gcc 4.3 does not).
+</li>
+<li><i>Inclusion Model</i>:
+
+<p>
+    <code>foo.h</code>:
+</p>
+
+
+<pre class="src src-cpp"><span style="color: #d18aff;">#if</span><span style="color: #d18aff;">n</span><span style="color: #d18aff;">def</span> FOO_H
+<span style="color: #d18aff;">#define</span> <span style="color: #ff8700;">FOO_H</span>
+
+<span style="color: #a1db00;">template</span> &lt;<span style="color: #a1db00;">class</span> <span style="color: #00d7af;">T</span>&gt;
+<span style="color: #a1db00;">class</span> <span style="color: #00d7af;">Foo</span> {
+  <span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">...</span>
+};
+
+<span style="color: #d18aff;">#include</span> <span style="color: #ff4ea3;">"foo_impl.h"</span>
+<span style="color: #d18aff;">#endif</span>
+</pre>
+
+
+<p>
+    <code>foo_impl.h</code>:
+</p>
+
+
+<pre class="src src-cpp"><span style="color: #d18aff;">#if</span><span style="color: #d18aff;">n</span><span style="color: #d18aff;">def</span> FOO_H
+<span style="color: #d18aff;">#error</span> <span style="color: #ff4ea3;">'foo_impl.h' cannot be directly included. Include 'foo.h' instead.</span>
+<span style="color: #d18aff;">#endif</span>
+
+<span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">implementation of Foo class template methods</span>
+</pre>
+
+</li>
+</ul>
+
+</li>
+<li>Favor free functions for operator overloading when possible (some
+  operators cannot be free functions).
+<ul>
+<li>you gain implicit conversions (??)
+</li>
+<li>reduces coupling, same as before: prefer free functions always
+</li>
+<li>If the operator needs access to private members, define it as
+    class method. Otherwise you are forces to declare the operator
+    function as a friend and client cannot add friends, and so won't
+    be able to define new operators.
+</li>
+</ul>
+
+</li>
+<li>Avoid using <code>#define</code> for constants (Cline et al, 1998; DeLoura
+  2001; Meyers 2005). Use static const member instead.
+<ul>
+<li>no types
+</li>
+<li>no scoping
+</li>
+<li>no access control
+</li>
+<li>no symbols: preprocessor will strip the name of the constant,
+    making debugging the code from client side harder because they
+    don't have a meaningful name but just a number instead.
+</li>
+</ul>
+
+</li>
+<li><b>Linkage</b>
+<ul>
+<li><i>External linkage</i>: accessible from other translation units (.cpp
+    files).
+</li>
+<li><i>Exported visibility</i>: visibile from library file (e.g. DLL).
+</li>
+<li>By default, GCC exports all sybmols. Turning this off improves
+    load times of the library.
+</li>
+</ul>
+
+</li>
+<li><code>#include</code> guards may improve performance.
+  foo.h:
+
+
+
+<pre class="src src-cpp"><span style="color: #d18aff;">#if</span><span style="color: #d18aff;">n</span><span style="color: #d18aff;">def</span> FOO_H
+<span style="color: #d18aff;">#define</span> <span style="color: #ff8700;">FOO_H</span>
+<span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">...</span>
+<span style="color: #d18aff;">#endif</span>
+</pre>
+
+
+<p>
+  Then, in order to include foo.h you write:
+</p>
+
+
+<pre class="src src-cpp"><span style="color: #d18aff;">#if</span><span style="color: #d18aff;">n</span><span style="color: #d18aff;">def</span> FOO_H
+<span style="color: #d18aff;">#include</span> <span style="color: #ff4ea3;">"foo.h"</span>
+<span style="color: #d18aff;">#endif</span>
+
+<span style="color: #6c6c6c; font-style: italic;">// </span><span style="color: #6c6c6c; font-style: italic;">...</span>
+</pre>
+
+
+<p>
+  This dramatically improves compilation times on some compilers /
+  environments. You may see no improvement, since various factors such
+  as the file system come into play here. For example, a certain file
+  system may have better caching which will make the cost of including
+  a file close to zero.
+</p></li>
+<li>Don't declare constants in headers. Use <code>extern</code> and define the
+  value in .cpp file. This will prevent each place that <code>#include</code>'s
+  the header from reserving space for its own seperate copy for the
+  constant, thus preventing bloat in the compiled target.
+</li>
+<li><b>Versioning</b>: &lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;
+<ul>
+<li><i>major</i>: API breaking changes.
+</li>
+<li><i>minor</i>: Additions made to API, but does not break existing
+    exposed API.
+</li>
+<li><i>patch</i>: No changes to API, only fixes/improvements. Client code
+    needs not to change.
+</li>
+</ul>
+
+</li>
+<li>Derive from a class only if it provides a virtual dtor.
+</li>
+</ul>
